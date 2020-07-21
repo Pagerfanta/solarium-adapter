@@ -3,8 +3,7 @@
 namespace Pagerfanta\Solarium;
 
 use Pagerfanta\Adapter\AdapterInterface;
-use Pagerfanta\Exception\InvalidArgumentException;
-use Solarium\Core\Client\Client;
+use Solarium\Core\Client\ClientInterface;
 use Solarium\Core\Client\Endpoint;
 use Solarium\QueryType\Select\Query\Query;
 use Solarium\QueryType\Select\Result\Result;
@@ -14,159 +13,36 @@ use Solarium\QueryType\Select\Result\Result;
  */
 class SolariumAdapter implements AdapterInterface
 {
-    /**
-     * @var \Solarium_Client|Client
-     */
-    private $client;
+    private ClientInterface $client;
+    private Query $query;
 
-    /**
-     * @var \Solarium_Query_Select|Query
-     */
-    private $query;
-
-    /**
-     * @var \Solarium_Result_Select|Result|null
-     */
-    private $resultSet;
+    private ?Result $resultSet = null;
 
     /**
      * @var Endpoint|string|null
      */
     private $endpoint;
 
-    /**
-     * @var int|null
-     */
-    private $resultSetStart;
+    private ?int $resultSetStart = null;
+    private ?int $resultSetRows = null;
 
-    /**
-     * @var int|null
-     */
-    private $resultSetRows;
-
-    /**
-     * @param \Solarium_Client|Client      $client
-     * @param \Solarium_Query_Select|Query $query
-     *
-     * @throws InvalidArgumentException if the client or query are not a proper class instance
-     */
-    public function __construct($client, $query)
+    public function __construct(ClientInterface $client, Query $query)
     {
-        $this->checkClient($client);
-        $this->checkQuery($query);
-
         $this->client = $client;
         $this->query = $query;
     }
 
-    /**
-     * @param \Solarium_Client|Client $client
-     *
-     * @throws InvalidArgumentException if the client is not a proper class instance
-     */
-    private function checkClient($client): void
-    {
-        if ($this->isClientInvalid($client)) {
-            throw new InvalidArgumentException($this->getClientInvalidMessage($client));
-        }
-
-        if ($client instanceof \Solarium_Client) {
-            trigger_deprecation(
-                'pagerfanta/pagerfanta',
-                '2.2',
-                'Support for solarium/solarium 2.x is deprecated, as of 3.0 the minimum supported version will be solarium/solarium 4.0.'
-            );
-        }
-    }
-
-    /**
-     * @param \Solarium_Client|Client $client
-     */
-    private function isClientInvalid($client): bool
-    {
-        return !($client instanceof Client) && !($client instanceof \Solarium_Client);
-    }
-
-    /**
-     * @param \Solarium_Client|Client $client
-     */
-    private function getClientInvalidMessage($client): string
-    {
-        return sprintf(
-            'The client object should be a %s or %s instance, %s given',
-            \Solarium_Client::class,
-            Client::class,
-            'object' === \gettype($client) ? \get_class($client) : \gettype($client)
-        );
-    }
-
-    /**
-     * @param \Solarium_Query_Select|Query $query
-     *
-     * @throws InvalidArgumentException if the query is not a proper class instance
-     */
-    private function checkQuery($query): void
-    {
-        if ($this->isQueryInvalid($query)) {
-            throw new InvalidArgumentException($this->getQueryInvalidMessage($query));
-        }
-
-        if ($query instanceof \Solarium_Query_Select) {
-            trigger_deprecation(
-                'pagerfanta/pagerfanta',
-                '2.2',
-                'Support for solarium/solarium 2.x is deprecated, as of 3.0 the minimum supported version will be solarium/solarium 4.0.'
-            );
-        }
-    }
-
-    /**
-     * @param \Solarium_Query_Select|Query $query
-     */
-    private function isQueryInvalid($query): bool
-    {
-        return !($query instanceof Query) && !($query instanceof \Solarium_Query_Select);
-    }
-
-    /**
-     * @param \Solarium_Query_Select|Query $query
-     */
-    private function getQueryInvalidMessage($query): string
-    {
-        return sprintf(
-            'The query object should be a %s or %s instance, %s given',
-            \Solarium_Query_Select::class,
-            Query::class,
-            'object' === \gettype($query) ? \get_class($query) : \gettype($query)
-        );
-    }
-
-    /**
-     * @return int
-     */
-    public function getNbResults()
+    public function getNbResults(): int
     {
         return $this->getResultSet()->getNumFound();
     }
 
-    /**
-     * @param int $offset
-     * @param int $length
-     *
-     * @return iterable
-     */
-    public function getSlice($offset, $length)
+    public function getSlice(int $offset, int $length): iterable
     {
         return $this->getResultSet($offset, $length);
     }
 
-    /**
-     * @param int|null $start
-     * @param int|null $rows
-     *
-     * @return \Solarium_Result_Select|Result
-     */
-    public function getResultSet($start = null, $rows = null)
+    public function getResultSet(?int $start = null, ?int $rows = null): Result
     {
         if ($this->resultSetStartAndRowsAreNotNullAndChange($start, $rows)) {
             $this->resultSetStart = $start;
@@ -183,29 +59,17 @@ class SolariumAdapter implements AdapterInterface
         return $this->resultSet;
     }
 
-    /**
-     * @param int|null $start
-     * @param int|null $rows
-     */
-    private function resultSetStartAndRowsAreNotNullAndChange($start, $rows): bool
+    private function resultSetStartAndRowsAreNotNullAndChange(?int $start, ?int $rows): bool
     {
         return $this->resultSetStartAndRowsAreNotNull($start, $rows) && $this->resultSetStartAndRowsChange($start, $rows);
     }
 
-    /**
-     * @param int|null $start
-     * @param int|null $rows
-     */
-    private function resultSetStartAndRowsAreNotNull($start, $rows): bool
+    private function resultSetStartAndRowsAreNotNull(?int $start, ?int $rows): bool
     {
         return null !== $start && null !== $rows;
     }
 
-    /**
-     * @param int|null $start
-     * @param int|null $rows
-     */
-    private function resultSetStartAndRowsChange($start, $rows): bool
+    private function resultSetStartAndRowsChange(?int $start, ?int $rows): bool
     {
         return $start !== $this->resultSetStart || $rows !== $this->resultSetRows;
     }
@@ -216,15 +80,8 @@ class SolariumAdapter implements AdapterInterface
             ->setRows($this->resultSetRows);
     }
 
-    /**
-     * @return \Solarium_Result_Select|Result
-     */
-    private function createResultSet()
+    private function createResultSet(): Result
     {
-        if ($this->client instanceof \Solarium_Client) {
-            return $this->client->select($this->query);
-        }
-
         return $this->client->select($this->query, $this->endpoint);
     }
 
